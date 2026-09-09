@@ -5,7 +5,16 @@ import { getAnonId, getCallsign } from "@/lib/anon";
 
 const MAX_LENGTH = 280;
 
-export default function Composer() {
+type Msg = {
+  id: string;
+  content: string;
+  anon_id: string;
+  callsign: string | null;
+  created_at: string;
+  detected_terms: string[];
+};
+
+export default function Composer({ onSent }: { onSent: (message: Msg) => void }) {
   const [value, setValue] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -16,6 +25,7 @@ export default function Composer() {
 
     setSending(true);
     setError(null);
+    setValue(""); // clear immediately so the box feels responsive
 
     const res = await fetch("/api/messages", {
       method: "POST",
@@ -32,10 +42,16 @@ export default function Composer() {
     if (!res || !res.ok) {
       const body = await res?.json().catch(() => null);
       setError(body?.error || "Couldn't send that. Try again.");
+      setValue(content); // put it back so nothing is lost
       return;
     }
 
-    setValue("");
+    const body = await res.json().catch(() => null);
+    // The message shows up the instant the server confirms it saved —
+    // no waiting on the realtime broadcast for our own post.
+    if (body?.message) {
+      onSent(body.message);
+    }
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
