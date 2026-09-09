@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { supabaseBrowser } from "@/lib/supabaseClient";
 import { shortAnonLabel } from "@/lib/anon";
 
 type Msg = {
@@ -19,29 +18,9 @@ function timeLabel(iso: string) {
   return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-export default function MessageFeed({ initial }: { initial: Msg[] }) {
-  const [messages, setMessages] = useState<Msg[]>(initial);
+export default function MessageFeed({ messages }: { messages: Msg[] }) {
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const [reportedIds, setReportedIds] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    const channel = supabaseBrowser
-      .channel("messages-feed")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages" },
-        (payload) => {
-          const row = payload.new as Msg & { is_hidden: boolean };
-          if (row.is_hidden) return; // severe matches never reach the panel
-          setMessages((prev) => [...prev, row]);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabaseBrowser.removeChannel(channel);
-    };
-  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
