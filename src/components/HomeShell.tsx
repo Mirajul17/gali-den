@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import MessageFeed from "./MessageFeed";
 import Composer from "./Composer";
 import CallsignModal from "./CallsignModal";
+import { supabaseBrowser } from "@/lib/supabaseClient";
 
 type Msg = {
   id: string;
@@ -17,6 +18,41 @@ type Msg = {
 
 export default function HomeShell({ initial }: { initial: Msg[] }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [messages, setMessages] = useState<Msg[]>(initial);
+
+  // The live channel still runs so everyone ELSE sees new posts in real
+  // time. For the person actually sending, we don't wait on this at all
+  // (see handleSent below) — this only adds messages we don't already have.
+  useEffect(() => {
+    const channel = supabaseBrowser
+      .channel("messages-feed")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages" },
+        (payload) => {
+          const row = payload.new as Msg & { is_hidden: boolean };
+          if (row.is_hidden) return;
+          setMessages((prev) =>
+            prev.some((m) => m.id === row.id) ? prev : [...prev, row]
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabaseBrowser.removeChannel(channel);
+    };
+  }, []);
+
+  // Called the moment our own POST /api/messages confirms the save —
+  // no need to wait for it to round-trip back through the realtime
+  // channel too. The dedupe check above stops it from being added twice
+  // if the broadcast also arrives a moment later.
+  function handleSent(message: Msg) {
+    setMessages((prev) =>
+      prev.some((m) => m.id === message.id) ? prev : [...prev, message]
+    );
+  }
 
   return (
     <div className="flex h-dvh flex-col">
@@ -43,8 +79,8 @@ export default function HomeShell({ initial }: { initial: Msg[] }) {
         </div>
       </header>
 
-      <MessageFeed initial={initial} />
-      <Composer />
+      <MessageFeed messages={messages} />
+      <Composer onSent={handleSent} />
       <CallsignModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
