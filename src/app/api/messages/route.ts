@@ -27,12 +27,13 @@ export async function POST(req: NextRequest) {
 
   const supabase = supabaseServer();
 
-  // --- Rate limiting -------------------------------------------------
-  const { data: rl } = await supabase
-    .from("rate_limits")
-    .select("*")
-    .eq("anon_id", anonId)
-    .maybeSingle();
+  // Rate-limit check and dictionary fetch don't depend on each other,
+  // so run them at the same time instead of one after another — this
+  // alone cuts a meaningful chunk off the response time.
+  const [{ data: rl }, { data: dictionary }] = await Promise.all([
+    supabase.from("rate_limits").select("*").eq("anon_id", anonId).maybeSingle(),
+    supabase.from("slang_dictionary").select("normalized_term, severity"),
+  ]);
 
   const today = new Date().toISOString().slice(0, 10);
   const now = new Date();
@@ -59,28 +60,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await supabase
+    // Not awaited: this bookkeeping write doesn't need to finish before
+    // we save the actual message and respond to the person waiting.
+    supabase
       .from("rate_limits")
       .update({
         last_posted_at: now.toISOString(),
         daily_count: sameDay ? dailyCount + 1 : 1,
         daily_date: today,
       })
-      .eq("anon_id", anonId);
+      .eq("anon_id", anonId)
+      .then(() => {});
   } else {
-    await supabase.from("rate_limits").insert({
-      anon_id: anonId,
-      last_posted_at: now.toISOString(),
-      daily_count: 1,
-      daily_date: today,
-    });
+    supabase
+      .from("rate_limits")
+      .insert({
+        anon_id: anonId,
+        last_posted_at: now.toISOString(),
+        daily_count: 1,
+        daily_date: today,
+      })
+      .then(() => {});
   }
 
   // --- Slang detection -------------------------------------------------
-  const { data: dictionary } = await supabase
-    .from("slang_dictionary")
-    .select("normalized_term, severity");
-
   const detected = detectSlang(content, dictionary ?? []);
   const severity = worstSeverity(detected);
 
