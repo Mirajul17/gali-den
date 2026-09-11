@@ -6,11 +6,19 @@ import Link from "next/link";
 type RankData = {
   topTerms: { term: string; count: number }[];
   topUsers: { anonId: string; callsign: string | null; count: number }[];
-  resetsAt: string;
+  snapshotDate: string | null;
 };
 
 function shortAnonLabel(anonId: string) {
   return "Anon#" + anonId.replace(/-/g, "").slice(0, 4).toUpperCase();
+}
+
+function formatDate(dateStr: string | null) {
+  if (!dateStr) return null;
+  return new Date(dateStr + "T00:00:00Z").toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
 }
 
 const MEDALS = ["1st", "2nd", "3rd"];
@@ -25,14 +33,16 @@ export default function RankingPage() {
 
   useEffect(() => {
     load();
-    const interval = setInterval(load, 15000);
+    const interval = setInterval(load, 30000);
     return () => clearInterval(interval);
   }, []);
 
   return (
     <div className="min-h-dvh flex flex-col">
       <header className="flex items-center justify-between px-5 sm:px-10 py-4 border-b border-line">
-        <h1 className="font-display italic text-xl tracking-tight">Today's rank</h1>
+        <h1 className="font-display italic text-xl tracking-tight">
+          {formatDate(data?.snapshotDate ?? null) ? `${formatDate(data!.snapshotDate)}'s rank` : "Rank"}
+        </h1>
         <Link href="/" className="text-xs font-medium text-ink/70 hover:text-ink">
           Back to feed
         </Link>
@@ -44,7 +54,7 @@ export default function RankingPage() {
             <h2 className="text-sm font-medium text-hush mb-4">Most used slang</h2>
             <ol className="flex flex-col gap-3">
               {(data?.topTerms ?? []).length === 0 && (
-                <li className="text-sm text-hush">Nothing ranked yet today.</li>
+                <li className="text-sm text-hush">No rank yet — check back after tonight's reset.</li>
               )}
               {data?.topTerms.map((t, i) => (
                 <li
@@ -65,7 +75,7 @@ export default function RankingPage() {
             <h2 className="text-sm font-medium text-hush mb-4">Most active today</h2>
             <ol className="flex flex-col gap-3">
               {(data?.topUsers ?? []).length === 0 && (
-                <li className="text-sm text-hush">No activity yet today.</li>
+                <li className="text-sm text-hush">No rank yet — check back after tonight's reset.</li>
               )}
               {data?.topUsers.map((u, i) => (
                 <li
@@ -85,7 +95,7 @@ export default function RankingPage() {
           </section>
 
           <p className="text-xs text-hush text-center">
-            {data?.resetsAt ?? "Resets daily at 00:00 UTC"} — yesterday's board is cleared, not archived.
+            Frozen at midnight UTC and held all day — updates again at the next reset.
           </p>
         </div>
       </main>
