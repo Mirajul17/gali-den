@@ -28,7 +28,11 @@ export type ReplyTarget = {
 export default function HomeShell({ initial }: { initial: Msg[] }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>(initial);
-  const [onlineCount, setOnlineCount] = useState(1);
+  // The displayed count is padded with a fixed offset above the real
+  // number of connections, so it never reads as "1 online." The real
+  // count from Presence still drives it — it just starts higher.
+  const ONLINE_COUNT_OFFSET = 12;
+  const [onlineCount, setOnlineCount] = useState(1 + ONLINE_COUNT_OFFSET);
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
 
   // Live feed: broadcasts new messages to everyone else. Our own posts
@@ -66,7 +70,8 @@ export default function HomeShell({ initial }: { initial: Msg[] }) {
     presence
       .on("presence", { event: "sync" }, () => {
         const state = presence.presenceState();
-        setOnlineCount(Object.keys(state).length || 1);
+        const real = Object.keys(state).length || 1;
+        setOnlineCount(real + ONLINE_COUNT_OFFSET);
       })
       .subscribe(async (status) => {
         if (status === "SUBSCRIBED") {
