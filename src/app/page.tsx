@@ -11,7 +11,7 @@ export default async function Page() {
 
   const { data } = await supabase
     .from("messages")
-    .select("id, content, anon_id, callsign, created_at, detected_terms")
+    .select("id, content, anon_id, callsign, created_at, detected_terms, reply_preview_content, reply_preview_label")
     .eq("is_hidden", false)
     .gte("created_at", todayStart.toISOString())
     .order("created_at", { ascending: true })
