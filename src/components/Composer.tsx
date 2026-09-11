@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { getAnonId, getCallsign } from "@/lib/anon";
+import type { ReplyTarget } from "./HomeShell";
 
 const MAX_LENGTH = 280;
 
@@ -12,9 +13,29 @@ type Msg = {
   callsign: string | null;
   created_at: string;
   detected_terms: string[];
+  reply_preview_content?: string | null;
+  reply_preview_label?: string | null;
 };
 
-export default function Composer({ onSent }: { onSent: (message: Msg) => void }) {
+function BouncingDots() {
+  return (
+    <span className="flex items-center gap-1 px-2">
+      <span className="h-1.5 w-1.5 rounded-full bg-white animate-bounce [animation-delay:-0.3s]" />
+      <span className="h-1.5 w-1.5 rounded-full bg-white animate-bounce [animation-delay:-0.15s]" />
+      <span className="h-1.5 w-1.5 rounded-full bg-white animate-bounce" />
+    </span>
+  );
+}
+
+export default function Composer({
+  onSent,
+  replyTarget,
+  onCancelReply,
+}: {
+  onSent: (message: Msg) => void;
+  replyTarget: ReplyTarget | null;
+  onCancelReply: () => void;
+}) {
   const [value, setValue] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +55,8 @@ export default function Composer({ onSent }: { onSent: (message: Msg) => void })
         content,
         anonId: getAnonId(),
         callsign: getCallsign(),
+        replyPreviewContent: replyTarget?.content ?? null,
+        replyPreviewLabel: replyTarget?.label ?? null,
       }),
     }).catch(() => null);
 
@@ -47,8 +70,6 @@ export default function Composer({ onSent }: { onSent: (message: Msg) => void })
     }
 
     const body = await res.json().catch(() => null);
-    // The message shows up the instant the server confirms it saved —
-    // no waiting on the realtime broadcast for our own post.
     if (body?.message) {
       onSent(body.message);
     }
@@ -64,7 +85,24 @@ export default function Composer({ onSent }: { onSent: (message: Msg) => void })
   return (
     <div className="border-t border-line bg-paper/90 backdrop-blur px-5 sm:px-10 py-4">
       <div className="mx-auto max-w-xl">
+        {replyTarget && (
+          <div className="flex items-start justify-between gap-2 mb-2 rounded-xl bg-[#f3f3f3] px-3 py-2">
+            <div className="text-[13px] text-ink/70 truncate">
+              <span className="font-medium">Replying to {replyTarget.label}: </span>
+              {replyTarget.content}
+            </div>
+            <button
+              onClick={onCancelReply}
+              aria-label="Cancel reply"
+              className="shrink-0 text-hush hover:text-ink text-sm leading-none"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {error && <p className="text-xs text-flag mb-2">{error}</p>}
+
         <div className="flex items-end gap-2 rounded-2xl border border-line bg-white px-3 py-2 focus-within:border-ink/40 transition-colors">
           <textarea
             value={value}
@@ -77,9 +115,9 @@ export default function Composer({ onSent }: { onSent: (message: Msg) => void })
           <button
             onClick={send}
             disabled={!value.trim() || sending}
-            className="shrink-0 rounded-full bg-ink text-white text-sm font-medium px-4 py-2 disabled:opacity-30 transition-opacity"
+            className="shrink-0 rounded-full bg-ink text-white text-sm font-medium px-4 py-2 disabled:opacity-70 transition-opacity min-w-[64px] flex items-center justify-center"
           >
-            Send
+            {sending ? <BouncingDots /> : "Send"}
           </button>
         </div>
         <div className="flex justify-between mt-1.5 px-1">
