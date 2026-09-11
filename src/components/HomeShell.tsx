@@ -6,6 +6,7 @@ import MessageFeed from "./MessageFeed";
 import Composer from "./Composer";
 import CallsignModal from "./CallsignModal";
 import { supabaseBrowser } from "@/lib/supabaseClient";
+import { getAnonId } from "@/lib/anon";
 
 type Msg = {
   id: string;
@@ -14,15 +15,24 @@ type Msg = {
   callsign: string | null;
   created_at: string;
   detected_terms: string[];
+  reply_preview_content?: string | null;
+  reply_preview_label?: string | null;
+};
+
+export type ReplyTarget = {
+  id: string;
+  content: string;
+  label: string;
 };
 
 export default function HomeShell({ initial }: { initial: Msg[] }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>(initial);
+  const [onlineCount, setOnlineCount] = useState(1);
+  const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
 
-  // The live channel still runs so everyone ELSE sees new posts in real
-  // time. For the person actually sending, we don't wait on this at all
-  // (see handleSent below) — this only adds messages we don't already have.
+  // Live feed: broadcasts new messages to everyone else. Our own posts
+  // are added directly in handleSent below, without waiting on this.
   useEffect(() => {
     const channel = supabaseBrowser
       .channel("messages-feed")
@@ -44,14 +54,36 @@ export default function HomeShell({ initial }: { initial: Msg[] }) {
     };
   }, []);
 
-  // Called the moment our own POST /api/messages confirms the save —
-  // no need to wait for it to round-trip back through the realtime
-  // channel too. The dedupe check above stops it from being added twice
-  // if the broadcast also arrives a moment later.
+  // "Who's online right now" via Supabase Presence. Each open tab counts
+  // as one — there's no way to dedupe by person without breaking
+  // anonymity, so this is "connections right now," not "unique people."
+  useEffect(() => {
+    const anonId = getAnonId();
+    const presence = supabaseBrowser.channel("online-users", {
+      config: { presence: { key: anonId + ":" + Math.random().toString(36).slice(2) } },
+    });
+
+    presence
+      .on("presence", { event: "sync" }, () => {
+        const state = presence.presenceState();
+        setOnlineCount(Object.keys(state).length || 1);
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await presence.track({ online_at: new Date().toISOString() });
+        }
+      });
+
+    return () => {
+      supabaseBrowser.removeChannel(presence);
+    };
+  }, []);
+
   function handleSent(message: Msg) {
     setMessages((prev) =>
       prev.some((m) => m.id === message.id) ? prev : [...prev, message]
     );
+    setReplyTarget(null);
   }
 
   return (
@@ -64,10 +96,10 @@ export default function HomeShell({ initial }: { initial: Msg[] }) {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-flag opacity-60" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-flag" />
             </span>
-            live
+            {onlineCount} online
           </span>
           <Link href="/ranking" className="text-xs font-medium text-ink/70 hover:text-ink">
-            Today's rank
+            Rank
           </Link>
           <button
             onClick={() => setSettingsOpen(true)}
@@ -79,8 +111,8 @@ export default function HomeShell({ initial }: { initial: Msg[] }) {
         </div>
       </header>
 
-      <MessageFeed messages={messages} />
-      <Composer onSent={handleSent} />
+      <MessageFeed messages={messages} onReply={setReplyTarget} />
+      <Composer onSent={handleSent} replyTarget={replyTarget} onCancelReply={() => setReplyTarget(null)} />
       <CallsignModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
