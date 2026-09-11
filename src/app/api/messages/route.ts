@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { detectSlang, worstSeverity } from "@/lib/slang";
+import { checkBlockedContent } from "@/lib/contentFilter";
 
 const MIN_SECONDS_BETWEEN_POSTS = 4;
 const MAX_POSTS_PER_DAY = 300;
@@ -11,6 +12,12 @@ export async function POST(req: NextRequest) {
   const content = (body?.content ?? "").toString().trim();
   const anonId = (body?.anonId ?? "").toString().trim();
   const callsign = body?.callsign ? body.callsign.toString().trim().slice(0, 24) : null;
+  const replyPreviewContent = body?.replyPreviewContent
+    ? body.replyPreviewContent.toString().slice(0, 200)
+    : null;
+  const replyPreviewLabel = body?.replyPreviewLabel
+    ? body.replyPreviewLabel.toString().slice(0, 40)
+    : null;
 
   if (!anonId) {
     return NextResponse.json({ error: "Missing anonId." }, { status: 400 });
@@ -23,6 +30,11 @@ export async function POST(req: NextRequest) {
       { error: `Keep it under ${MAX_LENGTH} characters.` },
       { status: 400 }
     );
+  }
+
+  const blocked = checkBlockedContent(content);
+  if (blocked.blocked) {
+    return NextResponse.json({ error: blocked.reason }, { status: 400 });
   }
 
   const supabase = supabaseServer();
@@ -101,6 +113,8 @@ export async function POST(req: NextRequest) {
       detected_terms: detected.map((d) => d.term),
       severity,
       is_hidden: isHidden,
+      reply_preview_content: replyPreviewContent,
+      reply_preview_label: replyPreviewLabel,
     })
     .select()
     .single();
