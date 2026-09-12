@@ -31,7 +31,7 @@ export default function HomeShell({ initial }: { initial: Msg[] }) {
   // The displayed count is padded with a fixed offset above the real
   // number of connections, so it never reads as "1 online." The real
   // count from Presence still drives it — it just starts higher.
-  const ONLINE_COUNT_OFFSET = 12;
+  const ONLINE_COUNT_OFFSET = 3;
   const [onlineCount, setOnlineCount] = useState(1 + ONLINE_COUNT_OFFSET);
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
 
